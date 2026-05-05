@@ -1,239 +1,177 @@
-import { useState, useEffect } from 'react';
-import useWebSocket from '../hooks/useWebSocket';
+import { useState, useEffect, useRef } from 'react'
+import { T } from '../tokens'
+import { Icon, ICONS } from '../components/Icon'
 
-function Alerts() {
-  const { isConnected, alerts, status, clearAlerts } = useWebSocket();
-  const [aiStatus, setAiStatus] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+function StatCard({ label, value }) {
+  return (
+    <div style={{ background:T.panel, border:`1px solid ${T.border}`, borderRadius:8, padding:'14px 16px', boxShadow:'0 1px 2px rgba(0,0,0,.04)' }}>
+      <div style={{ fontSize:11, color:T.dim, textTransform:'uppercase', letterSpacing:'.06em', fontWeight:600, marginBottom:8 }}>{label}</div>
+      <div style={{ fontSize:22, fontWeight:700, color:T.text, lineHeight:1 }}>{value ?? '—'}</div>
+    </div>
+  )
+}
 
-  // Fetch AI service status
+const alertStyle = type => {
+  if (type === 'violence') return { border:T.red,   text:T.red,   bar:T.red,   badge:T.redLight,   badgeBorder:`${T.red}44`,   badgeText:T.red   }
+  if (type === 'anomaly')  return { border:T.amber, text:T.amber, bar:T.amber, badge:T.amberLight, badgeBorder:`${T.amber}44`, badgeText:T.amber }
+  return                          { border:T.blue,  text:T.blue,  bar:T.blue,  badge:T.blueLight,  badgeBorder:`${T.blue}44`,  badgeText:T.blue  }
+}
+
+const AI_BASE = 'http://localhost:8000'
+
+export default function Alerts({ alerts, clearAlerts, isConnected, accentColor }) {
+  const [aiStatus, setAiStatus] = useState(null)
+  const [loading, setLoading]   = useState(false)
+
   const fetchStatus = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/ai/status');
-      if (response.ok) {
-        const data = await response.json();
-        setAiStatus(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch AI status:', error);
-    }
-  };
+      const r = await fetch(`${AI_BASE}/api/ai/status`)
+      if (r.ok) setAiStatus(await r.json())
+    } catch {}
+  }
 
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    fetchStatus()
+    const iv = setInterval(fetchStatus, 5000)
+    return () => clearInterval(iv)
+  }, [])
 
-  // Start detection
   const startDetection = async () => {
-    setIsLoading(true);
+    setLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/ai/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      if (response.ok) {
-        fetchStatus();
-      }
-    } catch (error) {
-      console.error('Failed to start detection:', error);
-    }
-    setIsLoading(false);
-  };
+      const r = await fetch(`${AI_BASE}/api/ai/start`, { method:'POST', headers:{ 'Content-Type':'application/json' } })
+      if (r.ok) fetchStatus()
+    } catch {}
+    setLoading(false)
+  }
 
-  // Stop detection
   const stopDetection = async () => {
-    setIsLoading(true);
+    setLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/ai/stop', {
-        method: 'POST'
-      });
-      if (response.ok) {
-        fetchStatus();
-      }
-    } catch (error) {
-      console.error('Failed to stop detection:', error);
-    }
-    setIsLoading(false);
-  };
+      const r = await fetch(`${AI_BASE}/api/ai/stop`, { method:'POST' })
+      if (r.ok) fetchStatus()
+    } catch {}
+    setLoading(false)
+  }
 
-  // Trigger test recording
-  const triggerTestRecording = async () => {
+  const triggerTest = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/ai/trigger-test', {
-        method: 'POST'
-      });
-      const data = await response.json();
-      alert(data.status || data.detail);
-    } catch (error) {
-      console.error('Failed to trigger test:', error);
-      alert('Failed to trigger test recording');
+      const r = await fetch(`${AI_BASE}/api/ai/trigger-test`, { method:'POST' })
+      const data = await r.json()
+      console.log('Test trigger:', data)
+    } catch (err) {
+      console.error('Failed to trigger test:', err)
     }
-  };
+  }
 
-  const formatTimestamp = (isoString) => {
-    return new Date(isoString).toLocaleString();
-  };
-
-  const getAlertColor = (type) => {
-    switch (type) {
-      case 'violence':
-        return 'bg-red-100 border-red-500 text-red-800';
-      case 'anomaly':
-        return 'bg-orange-100 border-orange-500 text-orange-800';
-      case 'recording':
-        return 'bg-blue-100 border-blue-500 text-blue-800';
-      default:
-        return 'bg-gray-100 border-gray-500 text-gray-800';
-    }
-  };
-
-  const getAlertIcon = (type) => {
-    switch (type) {
-      case 'violence':
-        return '🚨';
-      case 'anomaly':
-        return '⚠️';
-      case 'recording':
-        return '📹';
-      default:
-        return 'ℹ️';
-    }
-  };
+  const detecting = aiStatus?.is_detecting ?? false
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">AI Crime Detection</h1>
-        <div className="flex items-center gap-4">
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
-            isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-          }`}>
-            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            {isConnected ? 'Connected' : 'Disconnected'}
-          </div>
+    <div className="fade-in" style={{ display:'flex', flexDirection:'column', gap:20 }}>
+      <h1 style={{ fontSize:22, fontWeight:700, color:T.text }}>AI Crime Detection</h1>
+
+      {/* Status panel */}
+      <div style={{ background:T.panel, border:`1px solid ${T.border}`, borderRadius:10, padding:20 }}>
+        <div style={{ fontSize:11, fontWeight:600, color:T.dim, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:14 }}>Detection Status</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:16 }}>
+          <StatCard label="Status" value={
+            <span style={{ color: detecting ? T.green : T.muted, fontSize:16 }}>{detecting ? 'Detecting' : 'Stopped'}</span>
+          } />
+          <StatCard label="Camera"  value={aiStatus?.camera_id      ?? '—'} />
+          <StatCard label="Buffer"  value={aiStatus ? `${aiStatus.buffer_duration?.toFixed(1)}s` : '—'} />
+          <StatCard label="FPS"     value={aiStatus ? aiStatus.fps?.toFixed(1) : '—'} />
         </div>
-      </div>
-
-      {/* Status Panel */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4">Detection Status</h2>
-
-        {aiStatus ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <div className="bg-gray-50 p-3 rounded">
-              <div className="text-sm text-gray-500">Status</div>
-              <div className={`font-semibold ${aiStatus.is_detecting ? 'text-green-600' : 'text-gray-600'}`}>
-                {aiStatus.is_detecting ? 'Detecting' : 'Stopped'}
-              </div>
-            </div>
-            <div className="bg-gray-50 p-3 rounded">
-              <div className="text-sm text-gray-500">Camera</div>
-              <div className="font-semibold">{aiStatus.camera_id}</div>
-            </div>
-            <div className="bg-gray-50 p-3 rounded">
-              <div className="text-sm text-gray-500">Buffer</div>
-              <div className="font-semibold">{aiStatus.buffer_duration.toFixed(1)}s</div>
-            </div>
-            <div className="bg-gray-50 p-3 rounded">
-              <div className="text-sm text-gray-500">FPS</div>
-              <div className="font-semibold">{aiStatus.fps.toFixed(1)}</div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-gray-500 mb-4">Loading status...</div>
-        )}
-
-        <div className="flex gap-3">
-          <button
-            onClick={startDetection}
-            disabled={isLoading || aiStatus?.is_detecting}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          <button onClick={startDetection} disabled={loading || detecting}
+            style={{ padding:'8px 16px', background: detecting ? T.panelAlt : T.green, border:`1px solid ${detecting ? T.border : T.green}`, color: detecting ? T.dim : 'white', borderRadius:7, fontSize:12, fontWeight:600, cursor: detecting ? 'not-allowed' : 'pointer', opacity: detecting ? .5 : 1, transition:'all .15s' }}>
             Start Detection
           </button>
-          <button
-            onClick={stopDetection}
-            disabled={isLoading || !aiStatus?.is_detecting}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <button onClick={stopDetection} disabled={loading || !detecting}
+            style={{ padding:'8px 16px', background:'transparent', border:`1px solid ${!detecting ? T.border : T.red}44`, color: !detecting ? T.dim : T.red, borderRadius:7, fontSize:12, fontWeight:600, cursor: !detecting ? 'not-allowed' : 'pointer', opacity: !detecting ? .4 : 1, transition:'all .15s' }}>
             Stop Detection
           </button>
-          <button
-            onClick={triggerTestRecording}
-            disabled={isLoading}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            Test Recording
+          <button onClick={triggerTest}
+            style={{ padding:'8px 16px', background:'transparent', border:`1px solid ${accentColor}55`, color:accentColor, borderRadius:7, fontSize:12, fontWeight:600, cursor:'pointer' }}>
+            Trigger Test
           </button>
         </div>
       </div>
 
-      {/* Alerts Panel */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">Real-time Alerts</h2>
-          <button
-            onClick={clearAlerts}
-            className="text-sm text-gray-500 hover:text-gray-700"
-          >
-            Clear All
-          </button>
+      {/* Alert feed */}
+      <div style={{ background:T.panel, border:`1px solid ${T.border}`, borderRadius:10, padding:20 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+          <div style={{ fontSize:11, fontWeight:600, color:T.dim, textTransform:'uppercase', letterSpacing:'.08em' }}>
+            Real-time Alerts {alerts.length > 0 && <span style={{ color:T.muted }}>· {alerts.length}</span>}
+          </div>
+          {alerts.length > 0 && (
+            <button onClick={clearAlerts} style={{ background:'none', border:'none', cursor:'pointer', fontSize:11, color:T.dim }}>
+              Clear All
+            </button>
+          )}
         </div>
 
         {alerts.length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
-            No alerts yet. Start detection to monitor for incidents.
+          <div style={{ textAlign:'center', padding:'40px 0' }}>
+            <div style={{ color:T.border, display:'flex', justifyContent:'center', marginBottom:12 }}><Icon d={ICONS.camera} size={36} /></div>
+            <div style={{ fontSize:13, color:T.dim }}>No alerts yet.</div>
+            <div style={{ fontSize:11, color:T.dim, marginTop:4 }}>Start detection to begin monitoring for incidents.</div>
           </div>
         ) : (
-          <div className="space-y-3 max-h-96 overflow-y-auto">
-            {alerts.map((alert, index) => (
-              <div
-                key={`${alert.timestamp}-${index}`}
-                className={`border-l-4 p-4 rounded ${getAlertColor(alert.type)}`}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{getAlertIcon(alert.type)}</span>
-                    <div>
-                      <div className="font-semibold capitalize">{alert.type} Alert</div>
-                      <div className="text-sm">{alert.message}</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:10, maxHeight:420, overflowY:'auto', paddingRight:4 }}>
+            {alerts.map((alert, idx) => {
+              const c = alertStyle(alert.type)
+              const pct = ((alert.confidence ?? 0) * 100).toFixed(0)
+              return (
+                <div key={`${alert.timestamp}-${idx}`} className="slide-in"
+                  style={{ background:T.base, borderLeft:`3px solid ${c.border}`, borderRadius:'0 8px 8px 0', padding:'12px 14px' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', gap:12 }}>
+                    <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+                      <span style={{ color:c.text, marginTop:1 }}>
+                        <Icon d={alert.type === 'recording' ? ICONS.video : ICONS.warn} size={15} />
+                      </span>
+                      <div>
+                        <span style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em', color:c.badgeText, background:c.badge, border:`1px solid ${c.badgeBorder}`, padding:'1px 7px', borderRadius:4 }}>
+                          {alert.type}
+                        </span>
+                        <div style={{ fontSize:13, color:T.text, marginTop:5 }}>{alert.message}</div>
+                        {alert.camera_id && <div style={{ fontSize:11, color:T.dim, marginTop:2 }}>{alert.camera_id}</div>}
+                      </div>
+                    </div>
+                    <span style={{ fontSize:10, color:T.dim, flexShrink:0, marginTop:2 }}>
+                      {new Date(alert.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <div style={{ marginTop:10 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:T.dim, marginBottom:4 }}>
+                      <span>Confidence</span><span>{pct}%</span>
+                    </div>
+                    <div style={{ height:3, background:T.panelAlt, borderRadius:2, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${pct}%`, background:c.bar, borderRadius:2, transition:'width .5s' }} />
                     </div>
                   </div>
-                  <div className="text-right text-sm">
-                    <div>Confidence: {(alert.confidence * 100).toFixed(0)}%</div>
-                    <div className="text-xs opacity-75">{formatTimestamp(alert.timestamp)}</div>
-                  </div>
+                  {alert.data?.videoHash && (
+                    <div style={{ marginTop:8, fontSize:10, fontFamily:'JetBrains Mono,monospace', background:T.panel, padding:'6px 10px', borderRadius:5, color:T.muted, border:`1px solid ${T.border}` }}>
+                      <span style={{ color:T.dim }}>hash: </span>{alert.data.videoHash.slice(0,24)}…
+                      {alert.data.transactionHash && <span style={{ marginLeft:12 }}><span style={{ color:T.dim }}>tx: </span>{alert.data.transactionHash.slice(0,16)}…</span>}
+                    </div>
+                  )}
                 </div>
-
-                {alert.data?.videoHash && (
-                  <div className="mt-2 text-xs font-mono bg-white bg-opacity-50 p-2 rounded">
-                    Hash: {alert.data.videoHash.slice(0, 20)}...
-                    {alert.data.transactionHash && (
-                      <span className="ml-2">TX: {alert.data.transactionHash.slice(0, 20)}...</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
 
-      {/* Instructions */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-        <strong>How it works:</strong>
-        <ul className="mt-2 list-disc list-inside space-y-1">
-          <li>Start the AI service: <code className="bg-blue-100 px-1 rounded">cd ai-service && python -m app.main</code></li>
-          <li>Click "Start Detection" to begin monitoring your webcam</li>
-          <li>When violence/anomaly is detected, video is automatically saved and hashed to blockchain</li>
-          <li>Alerts appear here in real-time via WebSocket</li>
+      {/* Setup guide */}
+      <div style={{ background:T.panel, border:`1px solid ${T.border}`, borderRadius:10, padding:'14px 18px', fontSize:12, color:T.muted }}>
+        <div style={{ fontWeight:600, color:T.text, marginBottom:8 }}>Setup Guide</div>
+        <ul style={{ paddingLeft:16, display:'flex', flexDirection:'column', gap:5 }}>
+          <li>Start AI service: <code style={{ fontFamily:'JetBrains Mono,monospace', fontSize:11, background:T.panelAlt, padding:'1px 6px', borderRadius:4, color:T.text }}>cd ai-service && python -m app.main</code></li>
+          <li>Click "Start Detection" to begin webcam monitoring</li>
+          <li>Violence/anomaly events are automatically hashed &amp; written to blockchain</li>
+          <li>Alerts stream here in real-time via WebSocket</li>
         </ul>
       </div>
     </div>
-  );
+  )
 }
-
-export default Alerts;
